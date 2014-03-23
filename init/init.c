@@ -107,8 +107,8 @@ static time_t process_needs_restart;
 static const char *ENV[32];
 
 static unsigned emmc_boot = 0;
-
 static unsigned charging_mode = 0;
+static unsigned lpm_mode = 0;
 
 static const char *expand_environment(const char *val)
 {
@@ -815,6 +815,9 @@ static void import_kernel_nv(char *name, int for_emulator)
             emmc_boot = 1;
         }
 #endif
+
+    } else if (!strcmp(name,"lpm_boot")) {
+        if (!strcmp(value,"1")) lpm_mode = 1;
     } else if (!strcmp(name,BOARD_CHARGING_CMDLINE_NAME)) {
         strlcpy(battchg_pause, value, sizeof(battchg_pause));
     } else if (!strncmp(name, "androidboot.", 12) && name_len > 12) {
@@ -1064,25 +1067,6 @@ int audit_callback(void *data, security_class_t cls, char *buf, size_t len)
     return 0;
 }
 
-static int charging_mode_booting(void)
-{
-#ifndef BOARD_CHARGING_MODE_BOOTING_LPM
-    return 0;
-#else
-    int f;
-    char cmb;
-    f = open(BOARD_CHARGING_MODE_BOOTING_LPM, O_RDONLY);
-    if (f < 0)
-        return 0;
-
-    if (1 != read(f, (void *)&cmb,1))
-        return 0;
-
-    close(f);
-    return ('1' == cmb);
-#endif
-}
-
 static void selinux_initialize(void)
 {
     if (selinux_is_disabled()) {
@@ -1186,10 +1170,10 @@ int main(int argc, char **argv)
 
     INFO("reading config file\n");
 
-    if (!charging_mode_booting())
-       init_parse_config_file("/init.rc");
-    else
+    if (lpm_mode)
        init_parse_config_file("/lpm.rc");
+    else
+       init_parse_config_file("/init.rc");
 
     /* Check for an emmc initialisation file and read if present */
     if (emmc_boot && access("/init.emmc.rc", R_OK) == 0) {
